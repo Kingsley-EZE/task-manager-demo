@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tasks</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<main class="sheet">
+
+  <header class="masthead">
+    <h1>Tasks</h1>
+    <p class="summary" id="summary">Loading your list&hellip;</p>
+  </header>
+
+  <form class="compose" id="compose" autocomplete="off">
+    <input class="compose-title" id="new-title" name="title" maxlength="200"
+           placeholder="What needs doing?" aria-label="Task title" required>
+    <div class="compose-detail">
+      <label class="field">
+        <span>Category</span>
+        <select id="new-category"><option value="">None</option></select>
+      </label>
+      <label class="field">
+        <span>Due</span>
+        <input type="date" id="new-due">
+      </label>
+      <label class="field">
+        <span>Priority</span>
+        <select id="new-priority">
+          <option value="LOW">Low</option>
+          <option value="MEDIUM" selected>Medium</option>
+          <option value="HIGH">High</option>
+        </select>
+      </label>
+      <button class="primary" type="submit">Add task</button>
+    </div>
+  </form>
+
+  <div class="toolbar">
+    <div class="statuses" id="statuses" role="group" aria-label="Filter by status">
+      <button type="button" class="chip is-on" data-status="">All</button>
+      <button type="button" class="chip" data-status="TODO">To do</button>
+      <button type="button" class="chip" data-status="IN_PROGRESS">In progress</button>
+      <button type="button" class="chip" data-status="DONE">Done</button>
+    </div>
+    <div class="refine">
+      <label class="field">
+        <span>Category</span>
+        <select id="filter-category"><option value="">All</option></select>
+      </label>
+      <label class="field">
+        <span>Sort by</span>
+        <select id="filter-sort">
+          <option value="DUE_DATE">Due date</option>
+          <option value="PRIORITY">Priority</option>
+          <option value="TITLE">Title</option>
+          <option value="NEWEST">Newest</option>
+        </select>
+      </label>
+      <label class="field grow">
+        <span>Search</span>
+        <input type="search" id="filter-query" placeholder="milk">
+      </label>
+    </div>
+  </div>
+
+  <p class="notice" id="notice" role="status" hidden></p>
+
+  <ul class="list" id="list"></ul>
+
+  <section class="categories">
+    <h2>Categories</h2>
+    <ul class="tags" id="tags"></ul>
+    <form class="add-category" id="add-category" autocomplete="off">
+      <input id="new-category-name" maxlength="60" placeholder="Add a category" aria-label="New category name" required>
+      <button type="submit">Add</button>
+    </form>
+  </section>
+
+</main>
+
+<template id="task-template">
+  <li class="task">
+    <button class="mark" type="button"></button>
+    <div class="body">
+      <p class="title"></p>
+      <p class="notes"></p>
+    </div>
+    <div class="meta">
+      <span class="priority" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="category"></span>
+      <span class="due"></span>
+    </div>
+    <button class="remove" type="button">&times;<span class="sr-only"> delete</span></button>
+  </li>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>
