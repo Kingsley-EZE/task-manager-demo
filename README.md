@@ -139,6 +139,26 @@ own laptop.
 Moving to PostgreSQL later means changing the datasource URL and driver in
 `application.properties` and swapping the H2 dependency — no Kotlin changes.
 
+## Learning your way through it
+
+If the domain and repository layers feel like the framework doing something
+behind your back, [`docs/learning/`](docs/learning/) explains exactly what:
+entities and tables, the entity lifecycle and dirty checking, how repository
+interfaces run SQL with no implementation, and the four ways to write a query.
+
+Then there are six exercises that start out failing:
+
+```bash
+./gradlew exercises
+```
+
+They build real features onto this codebase — pagination, bulk deletes,
+optimistic locking — and are kept out of `./gradlew test` so the application's
+own suite stays green while you work.
+
+[`docs/roadmap.md`](docs/roadmap.md) covers where to go after this project:
+Flyway, Testcontainers, Spring Security, coroutines, deployment.
+
 ## Where you could take it next
 
 User accounts (Spring Security), recurring tasks, subtasks, reminders, or

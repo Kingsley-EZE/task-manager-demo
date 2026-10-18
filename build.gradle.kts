@@ -54,3 +54,19 @@ kotlin {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
+
+// The learning exercises in src/test/.../exercises are meant to be red until
+// you implement them, so they are kept out of the normal test run. That way
+// `./gradlew test` stays an honest signal about the application itself.
+tasks.test {
+    filter { excludeTestsMatching("*.exercises.*") }
+}
+
+tasks.register<Test>("exercises") {
+    group = "verification"
+    description = "Runs the learning exercises. Red is the starting state — see docs/learning/."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    filter { includeTestsMatching("*.exercises.*") }
+    outputs.upToDateWhen { false }   // always re-run, even when nothing changed
+}
