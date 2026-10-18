@@ -1,6 +1,8 @@
 # 3. Repositories without code
 
-> Files to have open: `repository/TaskRepository.kt`, `repository/CategoryRepository.kt`
+> Open these files beside you: `repository/TaskRepository.kt`, `repository/CategoryRepository.kt`
+
+## The thing that should not work
 
 ```kotlin
 interface CategoryRepository : JpaRepository<Category, Long> {
@@ -10,45 +12,59 @@ interface CategoryRepository : JpaRepository<Category, Long> {
 }
 ```
 
-No implementation. No `class CategoryRepositoryImpl` anywhere. Yet
-`categoryService.findAll()` runs SQL. Here is what actually happens.
+An **interface** in Kotlin is a list of method names with no bodies — a
+promise that someone, somewhere, will provide the actual code.
 
-## At startup, Spring writes the class for you
+Except nobody does. There is no `CategoryRepositoryImpl` anywhere in this
+project. Search for it; it does not exist. And yet
+`categoryService.findAll()` runs and returns rows.
 
-When the application context starts, Spring Data scans for interfaces extending
-`Repository` and, for each one, generates a proxy object implementing it. Each
-method is backed by one of three strategies:
+Here is what is really happening.
 
-1. **Inherited** (`save`, `findById`, `deleteById`, …) — standard JPA code that
-   ships with Spring Data.
-2. **Derived** (`findByNameIgnoreCase`) — the method *name* is parsed and a
-   query is built from it.
-3. **Declared** (`@Query("…")`) — you supply the query yourself.
+## Spring writes the class for you at startup
 
-That generated object is what gets injected into your service. The interface is
-a specification; Spring Data is the implementer.
+When the app starts, Spring Data looks for interfaces like this one and
+**generates the implementation in memory**, then hands you an object of that
+generated class. Your service gets a real working object; it just was not
+written by a human.
 
-## Reading method names as queries
+Each method gets handled in one of three ways:
 
-The parser splits a name into a **subject** and a **predicate**:
+| Kind | Example | Where the code comes from |
+|---|---|---|
+| **Inherited** | `save`, `findById`, `deleteById` | Standard code shipped with Spring Data |
+| **Derived** | `findByNameIgnoreCase` | Spring reads the *method name* and builds the query from it |
+| **Declared** | `@Query("SELECT …")` | You wrote the query yourself |
+
+It is the coffee shop where the barista knows your order. You say three words —
+"the usual, large" — and a complicated drink appears. The name carried the
+whole instruction.
+
+## Method names, read as sentences
+
+Spring splits the name into two parts:
 
 ```
 findAllByOrderByNameAsc
-└──┬──┘└────────┬──────┘
- subject     predicate
-
-findByNameIgnoreCase   →   SELECT … FROM categories WHERE LOWER(name) = LOWER(?)
-existsByNameIgnoreCase →   SELECT COUNT(…) > 0 …
-findAllByOrderByNameAsc →  SELECT … FROM categories ORDER BY name ASC
+└──┬───┘└──────┬───────┘
+ what to do   how to filter / sort
 ```
 
-The subject decides the *kind* of query: `find`, `exists`, `count`, `delete`.
-The predicate after `By` is matched against **property names on the entity**,
-joined with `And` / `Or`.
+The first part decides the *kind* of query: `find`, `exists`, `count`,
+`delete`. Everything after `By` is matched against **property names on your
+entity**.
 
-Useful keywords, all of which compose:
+So these three become:
 
-| Keyword | Generates |
+```kotlin
+findByNameIgnoreCase     →  SELECT … FROM categories WHERE LOWER(name) = LOWER(?)
+existsByNameIgnoreCase   →  SELECT COUNT(…) > 0 FROM categories WHERE …
+findAllByOrderByNameAsc  →  SELECT … FROM categories ORDER BY name ASC
+```
+
+Words you can use, all of which combine freely:
+
+| Write this | Get this SQL |
 |---|---|
 | `findByTitle` | `title = ?` |
 | `findByTitleContaining` | `title LIKE %?%` |
@@ -57,75 +73,109 @@ Useful keywords, all of which compose:
 | `findByDueDateIsNull` | `IS NULL` |
 | `findByStatusIn` | `IN (?, ?, …)` |
 | `findByTitleIgnoreCase` | wraps both sides in `LOWER()` |
-| `findByCategoryName` | joins to `categories` and matches `name` |
+| `findByCategoryName` | **joins to the categories table** and matches `name` |
 | `findTop5ByOrderByDueDateAsc` | `ORDER BY … LIMIT 5` |
 
-That last column of the table is the important one: `findByCategoryName`
-traverses the `@ManyToOne` into `Category.name` and writes the join for you.
+That second-to-last one earns attention. `findByCategoryName` walks from `Task`
+into `Task.category`, then into `Category.name`, and writes the join for you.
+A **join** means asking one question across two tables at once — "give me tasks,
+and look up each one's category while you are at it."
 
-## It fails at startup, not at runtime
+## The spelling matters, and that is good news
 
-Misspell a property — `findByNaem` — and the application **refuses to start**,
-with an error naming the property it could not find on the entity. This is a
-feature. A typo in a query string is a bug you find in production; a typo in a
-derived method name is a bug you find before the app serves a single request.
+Misspell a property — `findByNaem` — and the app **refuses to start**. The
+error names the property it could not find.
 
-The same discipline applies to return types, which the parser also respects:
+That feels harsh and is a gift. Compare the two ways of being wrong:
+
+- A typo inside a handwritten SQL string: found by a user, in production, at
+  2am.
+- A typo in a derived method name: found by you, ten seconds after you save
+  the file, before the app serves a single request.
+
+Failing early and loudly is almost always better than failing late and quietly.
+
+## The return type is part of the instruction
+
+Spring also reads what you promised to return:
 
 | You write | You get |
 |---|---|
-| `Category?` | the row, or null |
-| `Optional<Category>` | the same, Java style |
-| `List<Category>` | all matches, possibly empty |
-| `Boolean` (with `exists`) | whether any row matched |
-| `Long` (with `count`) | how many |
-| `Page<Category>` | a page plus the total count — needs a `Pageable` argument |
+| `Category?` | the row, or `null` if there is none |
+| `Optional<Category>` | the same idea, Java's way of saying it |
+| `List<Category>` | every match — an empty list if none |
+| `Boolean` (with `exists`) | whether anything matched |
+| `Long` (with `count`) | how many matched |
+| `Page<Category>` | one page of results plus the total count |
 
-## Where derived queries stop being a good idea
+## Where this approach stops being a good idea
 
-They scale badly with the number of conditions. Four optional filters would mean
-writing every combination:
+Derived names fall apart as conditions pile up. Four optional filters means
+writing every combination by hand:
 
 ```kotlin
 fun findByStatus(…)
 fun findByStatusAndPriority(…)
 fun findByStatusAndPriorityAndCategoryId(…)
 fun findByStatusAndCategoryId(…)
-// …and twelve more
+// …and about a dozen more
 ```
 
-That is exactly the problem `TaskRepository` avoids:
+That is the exact problem `TaskRepository` dodges:
 
 ```kotlin
 interface TaskRepository : JpaRepository<Task, Long>, JpaSpecificationExecutor<Task>
 ```
 
-`JpaSpecificationExecutor` adds `findAll(Specification)`, which lets
-`TaskService.specificationFor()` build the `WHERE` clause at runtime from
-whichever filters the caller actually supplied. One query method, every
-combination. That is the subject of the next chapter.
+That second interface adds `findAll(Specification)`, which lets
+`TaskService.specificationFor()` build the filter **while the app is running**,
+out of whichever filters the caller actually sent. One method, every
+combination. Chapter 4 covers it.
 
 ## `JpaRepository` vs `CrudRepository`
 
-`JpaRepository` *is* a `CrudRepository`, through `ListCrudRepository`:
+People present these as a choice. They are not — one contains the other:
 
 ```
-Repository → CrudRepository → ListCrudRepository → JpaRepository
+Repository  →  CrudRepository  →  ListCrudRepository  →  JpaRepository
+(empty          save, findById,     same, but returns      + everything below
+ marker)        delete, count…      List not Iterable
 ```
 
-On top of the CRUD basics it adds `List` return types instead of `Iterable`,
-paging and sorting, query-by-example, and the JPA-specific methods: `flush()`,
-`saveAndFlush()`, `getReferenceById()`, and the `…InBatch` bulk deletes.
+**CRUD** just stands for Create, Read, Update, Delete — the four basic things
+you do to stored data.
 
-This app genuinely needs that last group — `CategoryService.delete` calls
-`tasks.flush()`, and three tests call `saveAndFlush`. Declaring
-`CrudRepository` instead would not compile.
+So `JpaRepository` *is* a `CrudRepository` with extras on top:
 
-One trap when reading older tutorials: **`PagingAndSortingRepository` no longer
-extends `CrudRepository`.** They were decoupled in Spring Data 3.0, so declaring
-it alone gets you paging without `save` or `findById`. `JpaRepository` inherits
-from both branches, which is why it has everything.
+- **`List` instead of `Iterable`.** `Iterable` only promises "you can loop over
+  this" — no `.size`, no `list[0]`. `List` gives you both. This is the
+  difference you feel day to day.
+- **Paging and sorting**, and query-by-example.
+- **Methods that only make sense for a real SQL database:** `flush()`,
+  `saveAndFlush()`, `getReferenceById()`, and the `…InBatch` bulk deletes.
+
+This project genuinely needs that last group. `CategoryService.delete` calls
+`tasks.flush()` (chapter 2 explains why it must), and three tests call
+`saveAndFlush`. Swap in `CrudRepository` and the code stops compiling.
+
+**The rule of thumb:** use `CrudRepository` if you might swap the database for
+something non-SQL like MongoDB later and can live without flush control. Use
+`JpaRepository` once you have committed to a SQL database — which this app has.
+
+### One trap in older tutorials
+
+You will read that `PagingAndSortingRepository extends CrudRepository`. **That
+stopped being true in Spring Data 3.0**, and it is still false in the 4.1.1
+this project uses:
+
+```
+public interface PagingAndSortingRepository<T, ID> extends Repository<T, ID>
+```
+
+So if you declare it on its own expecting `save` and `findById` to come along
+for free, they will not. `JpaRepository` inherits from both branches, which is
+why it has the lot.
 
 ---
 
-Next: [queries, four ways](04-queries-four-ways.md).
+**Next:** [queries, four ways](04-queries-four-ways.md).

@@ -1,49 +1,82 @@
 # 4. Queries, four ways
 
-> Files to have open: `repository/TaskSpecifications.kt`, `service/TaskService.kt`
+> Open these files beside you: `repository/TaskSpecifications.kt`, `service/TaskService.kt`
 
-There are four ways to ask the database a question in Spring Data JPA. They are
-not ranked — each is right somewhere.
+A **query** is just a question you ask the database. "Give me every unfinished
+task." "How many are overdue?"
 
-## 1. Derived methods — the default
+There are four ways to write one in Spring Data JPA. None is best — each is
+right somewhere, and knowing which to reach for is most of the skill.
+
+---
+
+## Way 1 — Derived methods (the default)
 
 ```kotlin
 fun findByNameIgnoreCase(name: String): Category?
 ```
 
-**Use when** the query is fixed and has one or two conditions.
-**Stop when** the method name gets long enough to be hard to read, or when
-conditions are optional.
+Chapter 3 covered these: you name the method and Spring writes the query.
 
-## 2. `@Query` — when you want to say it in JPQL
+**Reach for it when** the question is fixed and has one or two conditions.
+**Stop when** the method name gets too long to read, or when some conditions
+are optional.
+
+---
+
+## Way 2 — `@Query` (write it yourself, in JPQL)
 
 ```kotlin
 @Query("SELECT t FROM Task t WHERE t.category IS NULL AND t.status <> :done")
 fun findUncategorisedUnfinished(@Param("done") done: TaskStatus): List<Task>
 ```
 
-JPQL looks like SQL but addresses **entities and properties**, not tables and
-columns: `Task` not `tasks`, `t.dueDate` not `due_date`. Hibernate translates.
+**JPQL** stands for Java Persistence Query Language. It looks almost exactly
+like SQL with one important difference: **it talks about your Kotlin classes,
+not your tables.**
 
-Useful variants:
+| JPQL says | SQL would say |
+|---|---|
+| `Task` (the class) | `tasks` (the table) |
+| `t.dueDate` (the property) | `due_date` (the column) |
+
+Hibernate translates. `:done` is a named placeholder — the value gets filled in
+safely, which is also what stops SQL injection attacks.
+
+Three variations worth knowing:
 
 ```kotlin
-@Query("… ", nativeQuery = true)     // real SQL, for database-specific features
+// Real SQL, for database-specific features JPQL cannot express
+@Query("SELECT * FROM tasks WHERE …", nativeQuery = true)
+
+// Return a summary object instead of whole entities
 @Query("SELECT new com.x.Summary(t.status, COUNT(t)) FROM Task t GROUP BY t.status")
-@Modifying @Query("UPDATE Task t SET t.status = :s WHERE …")   // bulk write
+
+// Change many rows in one statement
+@Modifying
+@Query("UPDATE Task t SET t.status = :s WHERE …")
 ```
 
-That last one carries a warning: `@Modifying` queries go straight to the
-database and **bypass the persistence context**, so entities already loaded in
-the current transaction keep their stale values. Useful for mass updates,
-dangerous when mixed with managed entities.
+⚠️ **That last one comes with a warning.** A `@Modifying` query goes straight
+to the database and **skips the notebook** from chapter 2. Any object Hibernate
+is currently watching keeps its old values, because nobody told it. Great for
+mass updates; dangerous when mixed with objects you are also editing by hand.
 
-**Use when** the query is fixed but too complex to name, or you need a join,
-aggregate, or projection.
+**Reach for it when** the question is fixed but too complicated to express as a
+method name — joins, totals, summaries.
 
-## 3. Specifications — when the filters are optional
+---
 
-This is what this app uses, and the reason is in `TaskService`:
+## Way 3 — Specifications (when the filters are optional)
+
+This is what this app uses, and the reason is worth seeing.
+
+Your task list has five filters — status, priority, category, due date, search
+text — and the user might use **any combination**. Five optional filters is
+32 possible queries. Nobody writes 32 methods.
+
+A **Specification** is one reusable *piece* of a `WHERE` clause. You build only
+the pieces you need and glue them together as the request comes in:
 
 ```kotlin
 private fun specificationFor(filter: TaskFilter): Specification<Task> = Specification.allOf(
@@ -57,57 +90,79 @@ private fun specificationFor(filter: TaskFilter): Specification<Task> = Specific
 )
 ```
 
-Read it as: *for each filter that was actually supplied, add that fragment;
-drop the nulls; combine what's left with AND.* Five optional filters are
-thirty-two possible queries, and this is all of them.
+Read it in plain English, line by line:
 
-Each fragment is a small function building a piece of a `WHERE` clause:
+> For each filter the caller actually sent, make the matching piece.
+> Throw away the nulls (`listOfNotNull`).
+> Glue what is left together with AND (`allOf`).
+
+It is a sandwich order. The filters are the fillings. The customer picks three
+of five; you build that sandwich, not all 32.
+
+### What a single piece looks like
 
 ```kotlin
 fun hasStatus(status: TaskStatus) =
     Specification<Task> { root, _, cb -> cb.equal(root.get<TaskStatus>("status"), status) }
 ```
 
-The three parameters are the Criteria API: `root` is the entity you are
-querying (think `FROM tasks t`), `cb` is a *builder* of conditions, and the
-middle one — ignored here — is the query itself, for when you need grouping or
-ordering.
+Three parameters arrive, and only two matter here:
 
-**Use when** filters are optional and combine freely — search screens, admin
-listings, anything with a filter bar.
-**The cost:** `root.get<TaskStatus>("status")` is a *string*. Rename the
-property and this breaks at runtime, not compile time. The JPA Metamodel
-generator (`Task_.status`) fixes that, at the price of a build step.
+- **`root`** — the thing you are querying. Think `FROM tasks t`; `root` is `t`.
+  `root.get("status")` means "the status column."
+- **`cb`** — short for **criteria builder**, a factory for conditions.
+  `cb.equal(a, b)` builds `a = b`. There is also `cb.like`, `cb.lessThan`,
+  `cb.or`, and so on.
+- **the one written `_`** — the query object itself, for grouping and ordering.
+  Unused here, and Kotlin's `_` means "I know it is there, I do not need it."
 
-## 4. The `EntityManager` — the escape hatch
+So that line reads: **`WHERE status = ?`**.
+
+**Reach for it when** filters are optional and combine freely — search screens,
+filter bars, admin lists.
+
+⚠️ **The cost:** `root.get<TaskStatus>("status")` contains a **string**. Rename
+the property to `state` and nothing complains until it breaks at runtime. (A
+tool called the JPA Metamodel generator fixes this by generating `Task_.status`
+for you, at the price of an extra build step.)
+
+---
+
+## Way 4 — The `EntityManager` (the escape hatch)
 
 ```kotlin
 @PersistenceContext private lateinit var em: EntityManager
 ```
 
-Everything above is built on this. Drop to it for things Spring Data does not
-model: stored procedures, hand-tuned native SQL, bulk operations, direct control
-of the persistence context (`em.detach`, `em.refresh`, `em.clear`).
+The `EntityManager` is the raw Hibernate tool that all three ways above are
+built on top of. It is the notebook from chapter 2, as an object you can hold.
 
-**Use when** nothing else fits. If you reach for it often, something upstream is
-wrong.
+Drop to it for things Spring Data does not model: stored procedures,
+hand-tuned SQL, or direct control of the notebook (`em.detach`, `em.refresh`,
+`em.clear`).
 
-## Choosing
+**Reach for it when** nothing else fits. If you find yourself here often,
+something further up is wrong.
 
-| Situation | Reach for |
+---
+
+## Choosing between them
+
+| Your situation | Reach for |
 |---|---|
-| One or two fixed conditions | derived method |
-| Fixed but complex: joins, aggregates, projections | `@Query` |
-| Optional filters that combine | Specification |
-| Database-specific SQL, procedures, bulk | native `@Query` or `EntityManager` |
+| One or two fixed conditions | a derived method |
+| Fixed, but complicated — joins, totals | `@Query` |
+| Optional filters that combine | a Specification |
+| Database-specific SQL, procedures, bulk changes | native `@Query` or `EntityManager` |
 
 ---
 
 # The N+1 problem
 
-This is the performance bug every JPA developer ships at least once.
+This is the performance bug nearly every JPA developer ships at least once. It
+has a silly name and a simple cause.
 
-Suppose `Category` had a `@OneToMany` list of tasks, and you wrote:
+Imagine `Category` had a list of its tasks, and you wrote:
 
 ```kotlin
 categories.findAll().forEach { category ->
@@ -115,57 +170,84 @@ categories.findAll().forEach { category ->
 }
 ```
 
-That is **1** query for the categories, then **N** more — one per category, as
-each lazy list is touched for the first time. Twenty categories, twenty-one
-queries. It passes every test, looks fine with sample data, and falls over in
-production.
+Looks like one question. It is not:
 
-Three fixes, in order of preference:
+```
+Query 1   SELECT * FROM categories              ← the "1"
+Query 2   SELECT * FROM tasks WHERE category_id = 1   ┐
+Query 3   SELECT * FROM tasks WHERE category_id = 2   │ the "N"
+Query 4   SELECT * FROM tasks WHERE category_id = 3   │
+…                                                      ┘
+```
 
-**`@EntityGraph`** — declarative, on the repository method:
+Twenty categories means **twenty-one** trips to the database instead of one or
+two. Hence "N+1": one query, plus one more per result.
+
+It passes every test. It looks instant with five rows of sample data. It falls
+over the week you get real users.
+
+It is going to a shop with a list of twenty items and making twenty separate
+trips, one item each.
+
+## Three fixes, best first
+
+**`@EntityGraph`** — tell the repository method to fetch the related data in
+the same trip:
 
 ```kotlin
 @EntityGraph(attributePaths = ["category"])
 fun findByStatus(status: TaskStatus): List<Task>
 ```
 
-**A join fetch** — explicit, in JPQL:
+**A join fetch** — the same idea written out in JPQL:
 
 ```kotlin
 @Query("SELECT t FROM Task t LEFT JOIN FETCH t.category WHERE t.status = :status")
 ```
 
-**`FetchType.EAGER`** — on the mapping itself. Blunt: it applies to *every*
-query, whether or not you need the association. Acceptable for a single small
-`@ManyToOne`, which is exactly why `Task.category` leaves the default in place
-and this app has no N+1 problem to solve.
+**`FetchType.EAGER`** on the mapping itself — blunt, because it applies to
+*every* query whether you need the related data or not.
 
-The rule of thumb: **`@ManyToOne` defaults to EAGER, `@OneToMany` defaults to
-LAZY**, and collections should generally stay lazy — you fetch them explicitly
-where you need them.
+### Lazy and eager, plainly
 
-## Seeing it happen
+- **Eager** = fetch it now, along with the main thing.
+- **Lazy** = do not fetch it until somebody actually asks.
 
-Turn on SQL logging in `application.properties` and count for yourself:
+Lazy sounds strictly better and is not: lazy is exactly what produces N+1,
+because "somebody asks" happens once per row inside your loop. Lazy is also
+what throws `LazyInitializationException` when the asking happens after the
+transaction closed (chapter 2).
+
+The defaults are worth memorising:
+
+| Mapping | Default | Why |
+|---|---|---|
+| `@ManyToOne` | **EAGER** | one extra small row — cheap |
+| `@OneToMany` | **LAZY** | could be thousands of rows — never load blindly |
+
+`Task.category` is a single `@ManyToOne` and leaves the default alone, which is
+why **this app has no N+1 problem to fix**. You will meet one the moment you
+add a `@OneToMany` — which the ["persistence you can trust"
+stage](../roadmap.md) of the roadmap walks you through on purpose.
+
+## Watching it happen for yourself
+
+Add this to `application.properties`:
 
 ```properties
-spring.jpa.properties.hibernate.format_sql=true
 logging.level.org.hibernate.SQL=DEBUG
-logging.level.org.hibernate.orm.jdbc.bind=TRACE   # shows the ? parameter values
+logging.level.org.hibernate.orm.jdbc.bind=TRACE   # shows the ? values too
 ```
 
-Run the app, load the page, and read the log. If you see the same `SELECT`
-repeated with different ids, that is an N+1 and you have just caught it the way
-professionals do.
+Now run the app, load the page, and read the log. Every query Hibernate sends
+appears. If you ever see the same `SELECT` repeated with different ids, you
+have just caught an N+1 the way professionals do.
 
-This app does not currently have an N+1 to find — `Task.category` is a single
-eager `@ManyToOne`, which is the one shape that is safe by default. You will
-meet the problem the moment you add a `@OneToMany`, which is what the
-"persistence you trust" stage of [the roadmap](../roadmap.md) is for.
+Being able to read the SQL your Kotlin produces is the single habit that
+separates people who use an ORM from people who are used by one.
 
 ---
 
-That is the domain and repository layers. Next, open
-[the exercises](../../src/test/kotlin/org/jetbrains/kotlin/taskmanagerdemo/exercises/)
-and make them pass — or read [the roadmap](../roadmap.md) for what comes after
-this project.
+That is the domain and repository layers covered. Now go
+[make the exercises pass](README.md#then-make-the-exercises-pass), or read
+[the roadmap](../roadmap.md) for what comes after this project.

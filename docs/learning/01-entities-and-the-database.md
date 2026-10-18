@@ -1,28 +1,58 @@
 # 1. Entities and the database
 
-> Files to have open: `domain/Task.kt`, `domain/Category.kt`, `build.gradle.kts`
+> Open these files beside you: `domain/Task.kt`, `domain/Category.kt`, `build.gradle.kts`
 
-A JPA entity is not really a class. It is a **map between two worlds**:
+## First, the words
 
-| Kotlin | Database |
+Three words get used constantly. Here they are in plain English:
+
+**Database** — a program that stores your data in tables. A table is just a
+grid, like a spreadsheet. Columns are the headings (`title`, `due_date`).
+Rows are the entries (one row = one task).
+
+**ORM** — stands for Object-Relational Mapping. It means: *a translator between
+Kotlin objects and database rows.* Without it you would write SQL by hand and
+copy values into objects yourself. With it, you work with Kotlin objects and
+the translator writes the SQL.
+
+**JPA and Hibernate** — JPA is the rulebook for how that translator should
+behave. Hibernate is the program that follows the rulebook. You write JPA;
+Hibernate does the work. Like a recipe and a cook.
+
+**Entity** — a Kotlin class that has been linked to a database table.
+`Task` is an entity. `TaskResponse` is not — it is just a plain object.
+
+**Annotation** — a label you stick on code, written with `@`, that tells a
+tool something. `@Entity` on a class is you telling Hibernate "this one is a
+table." The annotation does nothing by itself; some tool has to read it.
+
+## An entity is a translation table
+
+A `Task` object and a row in the database are the same information in two
+places:
+
+| In Kotlin | In the database |
 |---|---|
 | class `Task` | table `tasks` |
 | property `title` | column `title` |
 | one `Task` object | one row |
-| `task.category` | the foreign key column `category_id` |
+| `task.category` | the column `category_id` |
 
-Everything in `Task.kt` is an answer to a question about that map. Read the
-annotations as a conversation:
+So when you read `Task.kt`, read each annotation as you answering a question
+Hibernate is asking you:
 
 ```kotlin
-@Entity                      // "this class is a table"
-@Table(name = "tasks")       // "...called tasks, not TASK"
+@Entity                      // "Is this class a table?"        Yes.
+@Table(name = "tasks")       // "What is the table called?"     tasks.
 class Task(
     @Column(nullable = false, length = 200)
-    var title: String,       // "a NOT NULL VARCHAR(200) column"
+    var title: String,       // "What kind of column?"  Text, max 200
+                             //  characters, never allowed to be empty.
 ```
 
-## The identity column
+That is the whole file. Questions and answers.
+
+## The id column
 
 ```kotlin
 @Id
@@ -30,95 +60,162 @@ class Task(
 var id: Long? = null,
 ```
 
-`@Id` marks the primary key. `@GeneratedValue` says *the database assigns it*,
-not you — `IDENTITY` maps to an auto-increment column.
+**Primary key** means: the column that uniquely identifies a row. Like a
+student number — two students can share a name, never a student number.
+`@Id` marks it.
 
-This is why the type is `Long?` and not `Long`. A task you have just
-constructed has no id yet; it gets one when Hibernate inserts it. The nullable
-type is telling you the truth about a real state the object passes through.
-That is also why `TaskResponse.from()` does this:
+`@GeneratedValue` means *you do not make up the id — the database does.*
+`IDENTITY` is the common way: the database counts 1, 2, 3 as rows go in.
+
+### Why `Long?` and not `Long`
+
+In Kotlin, `Long?` means "this might be nothing." That question mark is telling
+you the truth about a real moment in the object's life:
+
+```kotlin
+val task = Task(title = "Buy milk")   // task.id is null — nothing saved yet
+tasks.save(task)                      // now the database gives it an id
+println(task.id)                      // 7
+```
+
+Before saving, there is no id, because the database has not seen it. After
+saving, there is. The type has to allow both.
+
+This is also why `TaskResponse.from()` looks the way it does:
 
 ```kotlin
 id = requireNotNull(task.id) { "A saved task always has an id" }
 ```
 
-By the time an entity is being turned into a response it has certainly been
-saved, so the null is impossible — but you have to say so, because the type
-system cannot know it.
+By then the task has definitely been saved, so the id definitely exists. But
+the compiler cannot know that, so you say it out loud.
 
 ## Why a plain class, not a `data class`
 
-Kotlin's `data class` is the obvious reach, and it is wrong here. Two reasons:
+A `data class` is the usual Kotlin reach for "a class that holds data." Here it
+causes two real bugs.
 
-**`equals`/`hashCode` are derived from every property.** Put a `Task` in a
-`HashSet` before saving it, save it, and its `id` changes from `null` to `1`.
-Its hash code changes with it, and the set can no longer find the object it is
-already holding. Entities should be compared by id, never by content.
+### Bug one: the object gets lost
 
-**Hibernate subclasses your entity.** To return a lazy proxy, Hibernate
-generates a subclass at runtime. A `data class` is final, and `copy()` on an
-entity gives you an object that looks saved but isn't attached to anything.
+A `data class` builds its identity out of *all* its values. Two tasks with the
+same title, date and status count as "the same task."
 
-Kotlin classes are also final by default, which is why `build.gradle.kts` has:
+Now watch what happens:
+
+```kotlin
+val task = Task(title = "Buy milk")   // id = null
+val box = hashSetOf(task)             // put it in a set
+tasks.save(task)                      // id becomes 7 — the object CHANGED
+
+box.contains(task)                    // false! Even though it is right there.
+```
+
+A `HashSet` files objects by a number worked out from their values. The id
+changed from `null` to `7`, so the number changed, so the set looks in the
+wrong drawer. The object is in the box and the box says it is not.
+
+Think of a cloakroom that files coats by colour. You hand in a white coat, they
+file it under W. While it hangs there someone dyes it blue. You come back, they
+look under B, and your coat is gone — even though it is hanging three feet
+away.
+
+**Entities should be compared by id, not by contents.** Plain classes do that
+by default.
+
+### Bug two: Hibernate needs to extend your class
+
+Hibernate sometimes hands you a stand-in object instead of the real one (more
+on that in chapter 4). To build a stand-in, it has to create a *child class* of
+`Task`. Kotlin classes are **final** by default, which means "no child classes
+allowed." A `data class` cannot be un-finalled at all.
+
+That is what this block in `build.gradle.kts` is for:
 
 ```kotlin
 allOpen {
     annotation("jakarta.persistence.Entity")
-    …
 }
 ```
 
-That makes `@Entity` classes open so Hibernate can subclass them. Its sibling,
-`kotlin("plugin.jpa")`, generates the no-argument constructor JPA needs to
-instantiate a row it has just read. Without those two plugins this app does not
-start — they are not optional polish.
+It says: any class marked `@Entity`, drop the "no children allowed" rule.
+
+Its partner, `kotlin("plugin.jpa")`, fixes a different problem. When Hibernate
+reads a row, it needs to make an empty `Task` first and then fill it in. An
+empty one means calling `Task()` with no arguments — and your `Task` requires a
+title. The plugin quietly adds a no-argument constructor for Hibernate's
+private use.
+
+**Neither plugin is optional. Remove either and the app will not start.**
 
 ## Why `var` and not `val`
 
-Hibernate writes into your object when loading a row, and watches it for
-changes afterwards (see [the entity lifecycle](02-the-entity-lifecycle.md)).
-Immutable entities fight both. `val` belongs in the DTOs in `web/dto/`, where
-immutability is genuinely right — a request object should never change after it
-arrives.
+`val` means "cannot be changed after it is created." That sounds safer, and for
+most Kotlin it is. But Hibernate needs to *write into* your object when it loads
+a row, and watch it for changes afterwards (chapter 2). Both need `var`.
+
+`val` is still right in `web/dto/` — a request that arrived from a browser
+should never change afterwards.
 
 ## Three different kinds of "required"
 
-This trips up everyone, because the same idea appears at three layers and they
-do *different* jobs:
+This confuses everyone, because the same idea shows up three times and each one
+does a *different job*:
 
 ```kotlin
-var title: String                              // Kotlin: cannot be null, ever (compile time)
-@Column(nullable = false)                      // DDL: the column is NOT NULL (database)
-@field:NotBlank val title: String              // Validation: reject this request (HTTP, in TaskRequest)
+var title: String                    // 1. Kotlin: cannot be null. Ever.
+@Column(nullable = false)            // 2. Database: this column rejects empty.
+@field:NotBlank val title: String    // 3. Requests: reply 400 if it is blank.
 ```
 
-The first is a compile-time guarantee. The second shapes the generated schema
-and is the database's own last line of defence. The third is the only one that
-produces a friendly `400` with a message — it lives on the DTO, not the entity,
-because it is about *requests*, not about *storage*. Drop the `@NotBlank` and a
-blank title fails deeper down as an ugly constraint violation instead of a clear
-error.
+Say someone sends `{"title": ""}` to your API:
 
-## Enums
+1. **Kotlin's non-null type** does nothing here — `""` is not null, it is an
+   empty string. This one only stops *null*.
+2. **`@Column(nullable = false)`** also does nothing — again, `""` is not null.
+   This one shapes the table and is the database's last line of defence.
+3. **`@NotBlank`** is the one that fires, and it is the only one that produces
+   a helpful reply:
+   `{"fieldErrors": {"title": "A task needs a title"}}`
+
+Note where number 3 lives: on `TaskRequest` in `web/dto/`, not on the entity.
+It is a rule about *incoming requests*, not about *storage*. Delete it and a
+blank title sails through until something deeper breaks, with an ugly error
+nobody can act on.
+
+## Enums: store the word, not the number
+
+An **enum** is a fixed list of options. `Priority` is `LOW`, `MEDIUM`, `HIGH`
+and nothing else.
 
 ```kotlin
 @Enumerated(EnumType.STRING)
-@Column(nullable = false, length = 20)
 var priority: Priority = Priority.MEDIUM,
 ```
 
-`EnumType.STRING` stores `'HIGH'`. The default, `ORDINAL`, stores the enum's
-position as a number — `LOW` is 0, `MEDIUM` is 1, `HIGH` is 2. That default is a
-trap: insert `URGENT` between `MEDIUM` and `HIGH` later and every existing row
-silently changes meaning. Always use `STRING` unless you have measured a reason
-not to.
+`STRING` stores the word `'HIGH'` in the column.
 
-The cost of `STRING` shows up in `service/TaskCommands.kt`: sorting by priority
-in SQL would order the *text* — `HIGH`, `LOW`, `MEDIUM` alphabetically — which
-is not what anyone means by urgency. That is why `TaskSort` sorts in Kotlin
-using the enum's declaration order instead.
+The default, if you leave `@Enumerated` off, is `ORDINAL` — it stores the
+*position in the list* as a number. `LOW` is 0, `MEDIUM` is 1, `HIGH` is 2.
 
-## Relationships
+Here is why that default is a trap. Suppose next year you add `URGENT` in the
+middle:
+
+```kotlin
+enum class Priority { LOW, MEDIUM, URGENT, HIGH }
+//                     0      1       2      3
+```
+
+Every row that said `2` used to mean `HIGH`. Now it means `URGENT`. You have
+silently changed the meaning of data already saved, with no error anywhere.
+With `STRING`, a row saying `'HIGH'` means `HIGH` forever.
+
+**The cost of `STRING`:** sorting. Ask the database to sort by priority and it
+sorts the *text* alphabetically — `HIGH`, `LOW`, `MEDIUM`. That is nonsense as
+an order of urgency. It is exactly why `TaskSort` in `service/TaskCommands.kt`
+sorts in Kotlin instead, where `LOW < MEDIUM < HIGH` follows the order you
+wrote them in.
+
+## Relationships: how one row points at another
 
 ```kotlin
 @ManyToOne
@@ -126,39 +223,61 @@ using the enum's declaration order instead.
 var category: Category? = null,
 ```
 
-Read `@ManyToOne` literally: **many** tasks point at **one** category. The side
-holding the annotation is the *owning* side, which means the foreign key column
-lives on **its** table — `tasks.category_id`. There is no matching property on
-`Category`, and that is deliberate: nothing in this app needs to ask a category
-for its tasks, and adding a `@OneToMany` list would invite loading every task
-whenever you touch a category.
+Read `@ManyToOne` literally: **many** tasks point at **one** category. Twenty
+tasks can all say "Groceries."
 
-The property is nullable because a task without a category is a normal thing. It
-is also why `CategoryService.delete` can detach tasks instead of cascading a
-delete into them.
+**Foreign key** means: a column holding the id of a row in another table. Not
+the whole category — just its id, like writing a phone number down instead of
+carrying the person around.
 
-`@ManyToOne` defaults to `FetchType.EAGER` — the category is fetched in the same
-query as the task. That is fine for one small row, and it is why mapping a task
-to a `TaskResponse` outside the transaction does not explode. The alternative,
-`LAZY`, and the trouble it causes, are covered in
-[queries, four ways](04-queries-four-ways.md).
+```
+tasks table                          categories table
+┌────┬────────────┬─────────────┐    ┌────┬────────────┐
+│ id │ title      │ category_id │    │ id │ name       │
+├────┼────────────┼─────────────┤    ├────┼────────────┤
+│  1 │ Buy milk   │      1 ──────────→  1 │ Groceries  │
+│  2 │ Buy bread  │      1 ──────────→    │            │
+│  3 │ Email Bob  │      NULL   │    │  2 │ Work       │
+└────┴────────────┴─────────────┘    └────┴────────────┘
+                     ↑
+            task 3 has no category — that is allowed
+```
 
-## A detail you will not see elsewhere
+`@JoinColumn(name = "category_id")` just names that column.
 
-In `build.gradle.kts`:
+Notice `Category` has **no** list of tasks. That is on purpose. Nothing in this
+app asks a category for its tasks, and adding such a list invites loading every
+task whenever you touch one category. Only build the direction you use.
+
+The `?` on `Category?` is there because a task with no category is perfectly
+normal — "Email Bob" above. It is also what lets `CategoryService.delete` set
+tasks loose instead of deleting them along with the category.
+
+## One odd line in the build file
 
 ```kotlin
 freeCompilerArgs.addAll("-Xjsr305=strict", "-Xannotation-default-target=param-property")
 ```
 
-Kotlin constructor properties are ambiguous: when you annotate one, does the
-annotation belong to the *constructor parameter* or to the *backing field*? JPA
-needs the field. This flag makes the compiler apply it to both, which is why
-`@Column` on a constructor parameter works at all. In older code you will see
-`@field:Column` written out by hand for the same reason — and that is still what
-the DTOs do, because there the distinction matters.
+When you write a Kotlin class like this:
+
+```kotlin
+class Task(
+    @Column(nullable = false)
+    var title: String,
+)
+```
+
+`title` is two things at once: an argument to the constructor, *and* a property
+on the class. So where does `@Column` stick — to the argument, or to the
+property? Kotlin needs to be told. That flag says "both," which is what makes
+the annotation reach the place JPA looks.
+
+In older code you will see people writing `@field:Column` by hand to say the
+same thing. The DTOs in this project still do, with `@field:NotBlank` — there
+the distinction genuinely matters.
 
 ---
 
-Next: [the entity lifecycle](02-the-entity-lifecycle.md) — where the real magic
-is, and where the surprises come from.
+**Next:** [the entity lifecycle](02-the-entity-lifecycle.md) — the chapter that
+makes Hibernate stop feeling like magic.
