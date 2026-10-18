@@ -65,13 +65,31 @@ class TaskService(
      * the caller, so the two can never disagree. Re-finishing an already
      * finished task keeps the time it was first finished.
      */
-    private fun applyStatus(task: Task, status: TaskStatus) {
-        when {
-            status != TaskStatus.DONE -> task.completedAt = null
-            task.status != TaskStatus.DONE -> task.completedAt = Instant.now()
+    private fun applyStatus(task: Task, newStatus: TaskStatus) {
+        val wasDone = task.status == TaskStatus.DONE
+        val willBeDone = newStatus == TaskStatus.DONE
+
+        task.completedAt = when {
+            !willBeDone -> null             // not finished: no completion time
+            wasDone -> task.completedAt     // already finished: keep the original
+            else -> Instant.now()           // finishing right now
         }
-        task.status = status
+        task.status = newStatus
     }
+
+    // The earlier version of applyStatus, kept for reference. It behaves
+    // identically; the difference is only in how plainly it reads. There, the
+    // third rule was implied by the *absence* of an else branch: when a task
+    // that was already DONE was marked DONE again, neither condition matched,
+    // the when did nothing, and completedAt kept its original value.
+    //
+    // private fun applyStatus(task: Task, status: TaskStatus) {
+    //     when {
+    //         status != TaskStatus.DONE -> task.completedAt = null
+    //         task.status != TaskStatus.DONE -> task.completedAt = Instant.now()
+    //     }
+    //     task.status = status
+    // }
 
     private fun resolveCategory(categoryId: Long?): Category? = categoryId?.let { id ->
         categories.findById(id).orElseThrow { NotFoundException("No category with id $id") }
