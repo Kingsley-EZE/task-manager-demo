@@ -6,6 +6,8 @@ import org.jetbrains.kotlin.taskmanagerdemo.domain.TaskStatus
 import org.jetbrains.kotlin.taskmanagerdemo.repository.CategoryRepository
 import org.jetbrains.kotlin.taskmanagerdemo.repository.TaskRepository
 import org.jetbrains.kotlin.taskmanagerdemo.repository.TaskSpecifications
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.domain.Specification
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -87,6 +89,10 @@ class TaskService(
         return TaskStatus.entries.associate { it.name to (counted[it] ?: 0L) } +
                 ("overdue" to tasks.countByStatusNotAndDueDateBefore(TaskStatus.DONE, LocalDate.now()))
     }
+
+    @Transactional(readOnly = true)
+    fun findPage(filter: TaskFilter, pageable: Pageable): Page<Task> =
+        tasks.findAll(specificationFor(filter), pageable)
 
     /**
      * The completion time is derived from the status rather than supplied by

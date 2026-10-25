@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.taskmanagerdemo.domain.Priority
 import org.jetbrains.kotlin.taskmanagerdemo.domain.Task
 import org.jetbrains.kotlin.taskmanagerdemo.domain.TaskStatus
 import org.jetbrains.kotlin.taskmanagerdemo.service.TaskDetails
+import org.springframework.data.domain.Page
 import java.time.Instant
 import java.time.LocalDate
 
@@ -74,6 +75,26 @@ data class TaskResponse(
             overdue = task.status != TaskStatus.DONE &&
                 task.dueDate != null &&
                 task.dueDate!!.isBefore(today),
+        )
+    }
+}
+
+data class PageResponse<T>(
+    val content: List<T>,
+    val page: Int,
+    val size: Int,
+    val totalElements: Long,
+    val totalPages: Int,
+    val last: Boolean
+) {
+    companion object {
+        fun <T : Any> from(page: Page<T>) = PageResponse(
+            content = page.content,
+            page = page.number,
+            size = page.size,
+            totalElements = page.totalElements,
+            totalPages = page.totalPages,
+            last = page.isLast
         )
     }
 }

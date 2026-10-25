@@ -6,10 +6,12 @@ import org.jetbrains.kotlin.taskmanagerdemo.domain.TaskStatus
 import org.jetbrains.kotlin.taskmanagerdemo.service.TaskFilter
 import org.jetbrains.kotlin.taskmanagerdemo.service.TaskService
 import org.jetbrains.kotlin.taskmanagerdemo.service.TaskSort
+import org.jetbrains.kotlin.taskmanagerdemo.web.dto.PageResponse
 import org.jetbrains.kotlin.taskmanagerdemo.web.dto.StatusRequest
 import org.jetbrains.kotlin.taskmanagerdemo.web.dto.TaskRequest
 import org.jetbrains.kotlin.taskmanagerdemo.web.dto.TaskResponse
 import org.jetbrains.kotlin.taskmanagerdemo.web.dto.TitleChangeRequest
+import org.springframework.data.domain.PageRequest
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -74,6 +76,24 @@ class TaskController(private val tasks: TaskService) {
 
     @GetMapping("/stats")
     fun getStats() = tasks.stats()
+
+    @GetMapping("/page")
+    fun getPagedTasks(
+        @RequestParam(required = false) status: TaskStatus?,
+        @RequestParam(required = false) categoryId: Long?,
+        @RequestParam(required = false) priority: Priority?,
+        @RequestParam(required = false)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) dueBefore: LocalDate?,
+        @RequestParam(required = false) q: String?,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "10") size: Int
+    ) : PageResponse<TaskResponse> =
+        PageResponse.from(
+            tasks.findPage(
+                TaskFilter(status, categoryId, priority, dueBefore, q),
+                PageRequest.of(page, size.coerceAtMost(100)))
+                .map { TaskResponse.from(it) }
+        )
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
