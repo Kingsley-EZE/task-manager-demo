@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.taskmanagerdemo.service.TaskSort
 import org.jetbrains.kotlin.taskmanagerdemo.web.dto.StatusRequest
 import org.jetbrains.kotlin.taskmanagerdemo.web.dto.TaskRequest
 import org.jetbrains.kotlin.taskmanagerdemo.web.dto.TaskResponse
+import org.jetbrains.kotlin.taskmanagerdemo.web.dto.TitleChangeRequest
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -66,6 +67,10 @@ class TaskController(private val tasks: TaskService) {
     @PatchMapping("/{id}/status")
     fun changeStatus(@PathVariable id: Long, @RequestBody request: StatusRequest): TaskResponse =
         TaskResponse.from(tasks.changeStatus(id, request.status))
+
+    @PatchMapping("/{id}/title")
+    fun changeTitle(@PathVariable id: Long, @Valid @RequestBody request: TitleChangeRequest): TaskResponse =
+        TaskResponse.from(tasks.changeTaskTitle(id, request.title))
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

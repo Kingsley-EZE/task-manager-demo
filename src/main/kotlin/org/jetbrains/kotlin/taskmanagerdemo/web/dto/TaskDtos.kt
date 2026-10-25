@@ -41,6 +41,12 @@ data class TaskRequest(
 /** Body of PATCH /api/tasks/{id}/status. */
 data class StatusRequest(val status: TaskStatus)
 
+/** Body of PATCH /api/tasks/{id}/title. */
+data class TitleChangeRequest(
+    @field:NotBlank(message = "A task needs a title")
+    val title: String
+)
+
 data class TaskResponse(
     val id: Long,
     val title: String,

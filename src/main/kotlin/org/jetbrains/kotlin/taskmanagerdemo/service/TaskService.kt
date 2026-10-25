@@ -55,6 +55,12 @@ class TaskService(
         return tasks.save(task)
     }
 
+    fun changeTaskTitle(id: Long, title: String): Task {
+        val task = findById(id)
+        task.title = title.trim()
+        return task
+    }
+
     fun delete(id: Long) {
         if (!tasks.existsById(id)) throw NotFoundException("No task with id $id")
         tasks.deleteById(id)
