@@ -72,6 +72,9 @@ class TaskController(private val tasks: TaskService) {
     fun changeTitle(@PathVariable id: Long, @Valid @RequestBody request: TitleChangeRequest): TaskResponse =
         TaskResponse.from(tasks.changeTaskTitle(id, request.title))
 
+    @GetMapping("/stats")
+    fun getStats() = tasks.stats()
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(@PathVariable id: Long) = tasks.delete(id)

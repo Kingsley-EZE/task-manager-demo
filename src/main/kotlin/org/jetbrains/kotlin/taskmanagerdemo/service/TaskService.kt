@@ -10,6 +10,7 @@ import org.springframework.data.jpa.domain.Specification
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.time.LocalDate
 
 @Service
 @Transactional
@@ -64,6 +65,27 @@ class TaskService(
     fun delete(id: Long) {
         if (!tasks.existsById(id)) throw NotFoundException("No task with id $id")
         tasks.deleteById(id)
+    }
+
+    fun stats(): Map<String, Long> =
+        TaskStatus.entries.associate { it.name to tasks.countByStatus(it) } +
+                ("overdue" to tasks.countByStatusNotAndDueDateBefore(TaskStatus.DONE, LocalDate.now()))
+
+    // Why this version is better for fetching stats: stats() above runs one
+    // COUNT query per status, so the number of database round trips grows with
+    // every status added to the enum. This version asks for every count at once
+    // with a single GROUP BY, so it is two queries (that one plus overdue) no
+    // matter how many statuses exist. The catch is that GROUP BY only returns
+    // rows for statuses that actually have tasks, so we iterate over
+    // TaskStatus.entries rather than over the query result, and fill each gap
+    // with 0L. Without that, an unused status would be missing from the JSON
+    // instead of showing 0.
+    fun statss(): Map<String, Long> {
+        val counted = tasks.countGroupedByStatus()
+            .associate { row -> row[0] as TaskStatus to row[1] as Long }
+
+        return TaskStatus.entries.associate { it.name to (counted[it] ?: 0L) } +
+                ("overdue" to tasks.countByStatusNotAndDueDateBefore(TaskStatus.DONE, LocalDate.now()))
     }
 
     /**
