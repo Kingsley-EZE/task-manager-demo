@@ -3,6 +3,7 @@ package org.jetbrains.kotlin.taskmanagerdemo.service
 import org.jetbrains.kotlin.taskmanagerdemo.domain.Priority
 import org.jetbrains.kotlin.taskmanagerdemo.domain.Task
 import org.jetbrains.kotlin.taskmanagerdemo.domain.TaskStatus
+import org.springframework.data.domain.Sort
 import java.time.LocalDate
 
 /** Everything a caller is allowed to set on a task, for both create and update. */
@@ -24,14 +25,24 @@ data class TaskFilter(
     val query: String? = null,
 )
 
-/**
- * The orderings the API offers. Sorting happens in Kotlin rather than SQL
- * because priority is stored as text ("HIGH", "LOW", "MEDIUM"), so ORDER BY
- * would sort it alphabetically instead of by urgency. A personal task list is
- * small enough that this costs nothing; a list of millions would want a
- * dedicated sortable column and an index instead.
- */
-enum class TaskSort(val comparator: Comparator<Task>) {
+// The earlier version of TaskSort, kept for reference. It sorted in Kotlin,
+// with a Comparator, after the database had already returned the rows. That
+// gives the right order only when every row is in hand: once the database
+// returns a page, sorting afterwards puts the wrong rows in order (the five
+// LOW tasks on page 0 get neatly sorted while the HIGH task waits on page 3).
+//
+// A Comparator is still the right tool when:
+//   - the list is already complete in memory and small, e.g. a handful of
+//     results you are about to show, or the items of one order;
+//   - the order depends on something the database cannot see, such as a
+//     value computed in Kotlin, a call to another service, or a rule too
+//     awkward to write as SQL (a "smart" score mixing due date and priority);
+//   - the data did not come from a database at all (a file, an API response).
+//
+// Reach for a database Sort instead when the data is paged or large, or when
+// the ordering only needs columns the database already has.
+//
+/*enum class TaskSort(val comparator: Comparator<Task>) {
 
     /** Soonest deadline first; tasks with no deadline at the bottom. */
     DUE_DATE(
@@ -48,4 +59,23 @@ enum class TaskSort(val comparator: Comparator<Task>) {
     TITLE(compareBy<Task, String>(String.CASE_INSENSITIVE_ORDER) { it.title }),
 
     NEWEST(compareByDescending<Task> { it.createdAt }),
+}*/
+
+/**
+ * The orderings the API offers. Each maps to a database Sort, so ordering
+ * happens in SQL before any paging. Priority sorts by priorityRank, because
+ * the priority column itself is text and would sort alphabetically
+ * (HIGH, LOW, MEDIUM) instead of by urgency.
+ */
+enum class TaskSort(val sort: Sort) {
+
+    /** Soonest deadline first; tasks with no deadline at the bottom. */
+    DUE_DATE(Sort.by(Sort.Order.asc("dueDate").nullsLast(), Sort.Order.desc("priorityRank"))),
+
+    /** Most urgent first, then by deadline. */
+    PRIORITY(Sort.by(Sort.Order.desc("priorityRank"), Sort.Order.asc("dueDate").nullsLast())),
+
+    TITLE(Sort.by(Sort.Order.asc("title").ignoreCase())),
+
+    NEWEST(Sort.by(Sort.Order.desc("createdAt"))),
 }

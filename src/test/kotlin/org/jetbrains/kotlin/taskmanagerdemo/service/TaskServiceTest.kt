@@ -163,6 +163,17 @@ class TaskServiceTest @Autowired constructor(
     }
 
     @Test
+    fun `re-ranks a task whose priority changes`() {
+        taskService.create(TaskDetails(title = "Medium", priority = Priority.MEDIUM))
+        val promoted = taskService.create(TaskDetails(title = "Promoted", priority = Priority.LOW))
+
+        taskService.update(assertNotNull(promoted.id), TaskDetails(title = "Promoted", priority = Priority.HIGH))
+        val found = taskService.findAll(TaskFilter(), TaskSort.PRIORITY)
+
+        assertEquals(listOf("Promoted", "Medium"), found.map { it.title })
+    }
+
+    @Test
     fun `complains when asked for a task that does not exist`() {
         assertFailsWith<NotFoundException> { taskService.findById(9999) }
         assertFailsWith<NotFoundException> { taskService.delete(9999) }

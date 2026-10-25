@@ -155,4 +155,25 @@ class TaskControllerTest @Autowired constructor(
             jsonPath("$[1].overdue") { value(false) }
         }
     }
+
+    /**
+     * The urgent task is created last, so it only reaches page 0 if the
+     * database sorts before it pages. Sorting in Kotlin after paging would
+     * leave it on the last page.
+     */
+    @Test
+    fun `sorts before paging, so the most urgent task is on the first page`() {
+        (1..5).forEach { taskService.create(TaskDetails(title = "Task $it")) }
+        taskService.create(TaskDetails(title = "Urgent", priority = Priority.HIGH))
+
+        mockMvc.get("/api/tasks/page") {
+            param("page", "0")
+            param("size", "2")
+            param("sort", "PRIORITY")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.content[0].title") { value("Urgent") }
+            jsonPath("$.totalElements") { value(6) }
+        }
+    }
 }

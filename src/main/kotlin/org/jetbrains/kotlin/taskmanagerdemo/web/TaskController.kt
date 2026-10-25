@@ -84,6 +84,7 @@ class TaskController(private val tasks: TaskService) {
         @RequestParam(required = false) priority: Priority?,
         @RequestParam(required = false)
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) dueBefore: LocalDate?,
+        @RequestParam(required = false, defaultValue = "DUE_DATE") sort: TaskSort,
         @RequestParam(required = false) q: String?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "10") size: Int
@@ -91,7 +92,7 @@ class TaskController(private val tasks: TaskService) {
         PageResponse.from(
             tasks.findPage(
                 TaskFilter(status, categoryId, priority, dueBefore, q),
-                PageRequest.of(page, size.coerceAtMost(100)))
+                PageRequest.of(page, size.coerceAtMost(100), sort.sort))
                 .map { TaskResponse.from(it) }
         )
 

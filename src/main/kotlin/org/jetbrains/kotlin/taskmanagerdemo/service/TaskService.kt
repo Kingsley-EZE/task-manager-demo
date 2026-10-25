@@ -23,7 +23,7 @@ class TaskService(
 
     @Transactional(readOnly = true)
     fun findAll(filter: TaskFilter = TaskFilter(), sort: TaskSort = TaskSort.DUE_DATE): List<Task> =
-        tasks.findAll(specificationFor(filter)).sortedWith(sort.comparator)
+        tasks.findAll(specificationFor(filter), sort.sort)
 
     @Transactional(readOnly = true)
     fun findById(id: Long): Task =
