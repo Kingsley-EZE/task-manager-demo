@@ -1,5 +1,6 @@
 package org.jetbrains.kotlin.taskmanagerdemo.repository
 
+import jakarta.persistence.criteria.JoinType
 import org.jetbrains.kotlin.taskmanagerdemo.domain.Category
 import org.jetbrains.kotlin.taskmanagerdemo.domain.Priority
 import org.jetbrains.kotlin.taskmanagerdemo.domain.Task
@@ -28,13 +29,19 @@ object TaskSpecifications {
     fun dueOnOrBefore(date: LocalDate) =
         Specification<Task> { root, _, cb -> cb.lessThanOrEqualTo(root.get<LocalDate>("dueDate"), date) }
 
-    /** Case-insensitive substring match over the title and the notes. */
+    /**
+     * Case-insensitive substring match over the title, the notes and the
+     * category name. The join is LEFT so tasks with no category still match
+     * on their title or notes; an inner join would drop them.
+     */
     fun mentions(text: String) =
         Specification<Task> { root, _, cb ->
             val pattern = "%${text.trim().lowercase()}%"
+            val category = root.join<Task, Category>("category", JoinType.LEFT)
             cb.or(
                 cb.like(cb.lower(root.get("title")), pattern),
                 cb.like(cb.lower(root.get("notes")), pattern),
+                cb.like(cb.lower(category.get("name")), pattern)
             )
         }
 }
