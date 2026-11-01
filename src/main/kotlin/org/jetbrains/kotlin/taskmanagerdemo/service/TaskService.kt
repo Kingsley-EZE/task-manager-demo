@@ -69,6 +69,13 @@ class TaskService(
         tasks.deleteById(id)
     }
 
+    fun deleteCompleted(): Int {
+        val completedTasks = tasks.findAll(specificationFor(TaskFilter(status = TaskStatus.DONE)))
+        tasks.deleteAllInBatch(completedTasks)
+        return completedTasks.size
+        //return tasks.deleteByStatusInOneGo(TaskStatus.DONE)
+    }
+
     fun stats(): Map<String, Long> =
         TaskStatus.entries.associate { it.name to tasks.countByStatus(it) } +
                 ("overdue" to tasks.countByStatusNotAndDueDateBefore(TaskStatus.DONE, LocalDate.now()))

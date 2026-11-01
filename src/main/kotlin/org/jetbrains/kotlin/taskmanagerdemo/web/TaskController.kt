@@ -99,4 +99,10 @@ class TaskController(private val tasks: TaskService) {
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(@PathVariable id: Long) = tasks.delete(id)
+
+    @DeleteMapping("/completed")
+    fun deleteCompleted(): Map<String, Int> {
+        val completed = tasks.deleteCompleted()
+        return mapOf("deleted" to completed)
+    }
 }
