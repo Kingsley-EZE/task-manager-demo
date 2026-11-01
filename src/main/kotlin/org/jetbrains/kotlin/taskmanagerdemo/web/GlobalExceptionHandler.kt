@@ -2,8 +2,10 @@ package org.jetbrains.kotlin.taskmanagerdemo.web
 
 import org.jetbrains.kotlin.taskmanagerdemo.service.DuplicateNameException
 import org.jetbrains.kotlin.taskmanagerdemo.service.NotFoundException
+import org.jetbrains.kotlin.taskmanagerdemo.service.TaskEditConflictException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.orm.ObjectOptimisticLockingFailureException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -32,6 +34,19 @@ class GlobalExceptionHandler {
     @ExceptionHandler(DuplicateNameException::class)
     fun handleDuplicate(ex: DuplicateNameException) =
         respond(HttpStatus.CONFLICT, ex.message ?: "Already exists")
+
+    @ExceptionHandler(TaskEditConflictException::class)
+    fun handleTaskEditConflict(ex: TaskEditConflictException) =
+        respond(HttpStatus.CONFLICT, ex.message ?: "Someone else changed this task. Reload and try again")
+
+    /**
+     * Two saves that both passed the version check in TaskService at the same
+     * instant: @Version catches the second one when it commits. The exception's
+     * own message is Hibernate's internal wording, so it is not passed on.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException::class)
+    fun handleStaleWrite(ex: ObjectOptimisticLockingFailureException) =
+        respond(HttpStatus.CONFLICT, "Someone else changed this task. Reload and try again")
 
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException) =

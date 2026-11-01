@@ -24,6 +24,8 @@ data class TaskRequest(
     @field:Size(max = 2000, message = "Notes can be at most 2000 characters")
     val notes: String? = null,
 
+    val version: Long? = null,
+
     val categoryId: Long? = null,
     val dueDate: LocalDate? = null,
     val priority: Priority = Priority.MEDIUM,
@@ -31,6 +33,7 @@ data class TaskRequest(
 ) {
     fun toDetails() = TaskDetails(
         title = title,
+        version = version,
         notes = notes,
         categoryId = categoryId,
         dueDate = dueDate,
@@ -50,6 +53,7 @@ data class TitleChangeRequest(
 
 data class TaskResponse(
     val id: Long,
+    val version: Long?,
     val title: String,
     val notes: String?,
     val category: CategoryResponse?,
@@ -64,6 +68,7 @@ data class TaskResponse(
     companion object {
         fun from(task: Task, today: LocalDate = LocalDate.now()) = TaskResponse(
             id = requireNotNull(task.id) { "A saved task always has an id" },
+            version = task.version,
             title = task.title,
             notes = task.notes,
             category = task.category?.let(CategoryResponse::from),

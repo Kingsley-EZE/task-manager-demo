@@ -52,4 +52,53 @@ interface TaskRepository : JpaRepository<Task, Long>, JpaSpecificationExecutor<T
     @Modifying
     @Query("DELETE FROM Task t WHERE t.status = :status")
     fun deleteByStatusInOneGo(@Param("status") status: TaskStatus): Int
+
+    // Exercise 6, going further: optimistic versus pessimistic locking.
+    //
+    // Optimistic locking (what Task uses, through @Version) takes no lock.
+    // Everyone reads and edits freely, and a conflict is only caught when
+    // saving, by the version check. Like a shared document that says
+    // "someone changed this, reload".
+    //
+    // Pessimistic locking locks the row the moment it is read, with
+    // SELECT ... FOR UPDATE. Anyone else who wants to change that row waits
+    // until the locking transaction finishes. Like a bathroom door lock:
+    // nobody walks in on you, but a queue forms outside.
+    //
+    // Cost when many requests want the same row:
+    //   - Optimistic: reads and saves are cheap, but the losers redo their
+    //     work. Ten simultaneous updates to one task means one wins and nine
+    //     fail and retry. When conflicts are rare, as in a task app, it costs
+    //     almost nothing.
+    //   - Pessimistic: nobody fails, but everyone waits in line. Work on that
+    //     row happens one request at a time, a slow transaction holds up the
+    //     rest, and lock timeouts or deadlocks become possible (two
+    //     transactions each waiting for a row the other has locked, until the
+    //     database cancels one).
+    //
+    // Why this app needs optimistic locking: a pessimistic lock lasts only as
+    // long as one transaction, a few milliseconds inside one request. It
+    // cannot cover a person who opens the edit form, thinks for two minutes,
+    // then saves, because those are separate requests and separate
+    // transactions. Two people editing from stale pages can only be caught by
+    // a version check.
+    //
+    // When pessimistic locking is the better choice: short read-then-write
+    // steps entirely on the server, where many requests hit the same row and a
+    // failed save is costly or awkward to retry. Taking the last item from
+    // stock, booking the last seat, moving money between balances, handing out
+    // the next invoice number, or anything whose retry would repeat a side
+    // effect such as sending an email.
+    //
+    // In Spring Data, it is an annotation on a repository method. Called
+    // inside a transaction, Hibernate adds FOR UPDATE to the SELECT and the
+    // row stays locked until that transaction commits. LockModeType comes from
+    // jakarta.persistence. With logging.level.org.hibernate.SQL=DEBUG you can
+    // see "for update" at the end of the generated query.
+    //
+    // @Lock(LockModeType.PESSIMISTIC_WRITE)
+    // fun findLockedById(id: Long): Task?
+    //
+    // Rule of thumb: optimistic by default; pessimistic only for short, highly
+    // contested writes on the server, where a retry is worse than a wait.
 }

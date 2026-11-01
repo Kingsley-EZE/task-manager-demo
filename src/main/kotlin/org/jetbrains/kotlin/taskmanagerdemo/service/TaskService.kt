@@ -43,6 +43,13 @@ class TaskService(
 
     fun update(id: Long, details: TaskDetails): Task {
         val task = findById(id)
+
+        val version = details.version ?: throw IllegalArgumentException("Send back the version you loaded")
+
+        if (version != task.version) {
+            throw TaskEditConflictException("Someone else changed this task. Reload and try again")
+        }
+
         task.title = details.title.trim()
         task.notes = details.notes?.trim()?.ifBlank { null }
         task.category = resolveCategory(details.categoryId)

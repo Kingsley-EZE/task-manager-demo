@@ -10,6 +10,7 @@ import java.time.LocalDate
 data class TaskDetails(
     val title: String,
     val notes: String? = null,
+    val version: Long? = null,
     val categoryId: Long? = null,
     val dueDate: LocalDate? = null,
     val priority: Priority = Priority.MEDIUM,

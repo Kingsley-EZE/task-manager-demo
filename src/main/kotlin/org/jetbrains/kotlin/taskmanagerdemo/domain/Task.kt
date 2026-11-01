@@ -12,6 +12,7 @@ import jakarta.persistence.ManyToOne
 import jakarta.persistence.PrePersist
 import jakarta.persistence.PreUpdate
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import java.time.Instant
 import java.time.LocalDate
 
@@ -24,6 +25,9 @@ class Task(
 
     @Column(length = 2000)
     var notes: String? = null,
+
+    @Version
+    var version: Long? = null,
 
     /**
      * Many tasks point at one category; the category_id column lives on this

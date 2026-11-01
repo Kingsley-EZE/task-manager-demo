@@ -91,6 +91,7 @@ class TaskServiceTest @Autowired constructor(
             TaskDetails(
                 title = "Buy oat milk",
                 notes = "The barista one",
+                version = task.version,
                 categoryId = null,
                 dueDate = LocalDate.of(2026, 11, 1),
                 priority = Priority.LOW,
@@ -167,7 +168,10 @@ class TaskServiceTest @Autowired constructor(
         taskService.create(TaskDetails(title = "Medium", priority = Priority.MEDIUM))
         val promoted = taskService.create(TaskDetails(title = "Promoted", priority = Priority.LOW))
 
-        taskService.update(assertNotNull(promoted.id), TaskDetails(title = "Promoted", priority = Priority.HIGH))
+        taskService.update(
+            assertNotNull(promoted.id),
+            TaskDetails(title = "Promoted", priority = Priority.HIGH, version = promoted.version),
+        )
         val found = taskService.findAll(TaskFilter(), TaskSort.PRIORITY)
 
         assertEquals(listOf("Promoted", "Medium"), found.map { it.title })

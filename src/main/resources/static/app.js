@@ -203,6 +203,9 @@ function editorRow(task) {
           dueDate: fields.dueDate.value || null,
           priority: fields.priority.value,
           status: task.status,
+          // The version this edit started from. If someone saved in the
+          // meantime, the server refuses with a 409 rather than overwrite them.
+          version: task.version,
         }),
       });
       state.editingId = null;

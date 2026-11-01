@@ -125,12 +125,35 @@ class TaskControllerTest @Autowired constructor(
 
         mockMvc.put("/api/tasks/${assertNotNull(task.id)}") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"title":"Buy oat milk","priority":"LOW","status":"IN_PROGRESS"}"""
+            content = """{"title":"Buy oat milk","priority":"LOW","status":"IN_PROGRESS","version":${task.version}}"""
         }.andExpect {
             status { isOk() }
             jsonPath("$.title") { value("Buy oat milk") }
             jsonPath("$.priority") { value("LOW") }
             jsonPath("$.status") { value("IN_PROGRESS") }
+        }
+    }
+
+    /**
+     * A client editing from a stale page sends back a version that is no
+     * longer the task's current one. The edit must be refused with a 409,
+     * and the task left as it was.
+     */
+    @Test
+    fun `refuses a put based on a version that is not the current one`() {
+        val task = taskService.create(TaskDetails(title = "Buy milk"))
+        val id = assertNotNull(task.id)
+        val staleVersion = assertNotNull(task.version) + 1
+
+        mockMvc.put("/api/tasks/$id") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"title":"Buy oat milk","version":$staleVersion}"""
+        }.andExpect {
+            status { isConflict() }
+        }
+
+        mockMvc.get("/api/tasks/$id").andExpect {
+            jsonPath("$.title") { value("Buy milk") }
         }
     }
 
