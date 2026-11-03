@@ -13,6 +13,9 @@ have read about but not built is a stage you have not done.
 **Read the SQL and the logs.** Most Spring confusion is cured by turning on
 `logging.level.org.hibernate.SQL=DEBUG` and looking at what actually ran.
 
+**Build it in new projects.** [The project ladder](project-ladder.md) turns
+these stages into small projects, each started from an empty folder.
+
 ---
 
 ## Stage 0 — Finish this project
@@ -20,7 +23,7 @@ have read about but not built is a stage you have not done.
 You are here. Before moving on:
 
 - [ ] Work through [the four chapters](learning/) on domain and repositories
-- [ ] Make the six exercises pass: `./gradlew exercises`
+- [x] Make the six exercises pass: `./gradlew exercises`
 - [ ] Explain to someone else why `update()` does not need its `save()` call
 
 That last one is the real test. If you can explain dirty checking out loud, the
